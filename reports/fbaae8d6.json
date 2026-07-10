@@ -1,0 +1,146 @@
+{
+  "task_id": "fbaae8d6",
+  "scan_result": {
+    "photo_quality": "清晰",
+    "seat_analysis": {
+      "facing": "面朝窗户",
+      "back_to": "背对实墙",
+      "has_support": true,
+      "has_rush": false,
+      "note": "座位布局端正，背有实墙为靠山"
+    },
+    "desktop_analysis": {
+      "items": [
+        "笔记本电脑",
+        "文件堆（右侧）",
+        "塑料假花",
+        "空水杯"
+      ],
+      "left_right": "右侧高于左侧",
+      "clutter_score": 7,
+      "note": "右侧文件堆积过高，青龙位受压"
+    },
+    "plant_decoration": {
+      "has_plant": true,
+      "plant_type": "塑料假花",
+      "plant_status": "不适用",
+      "sharp_objects": [
+        "无"
+      ],
+      "water_feature": false,
+      "note": "假花缺乏生气，建议更换为真绿植"
+    },
+    "overhead": {
+      "beam": false,
+      "light_type": "长条形LED灯",
+      "light_direct": false,
+      "air_con": true,
+      "air_con_direct": true,
+      "note": "空调直吹头部，气场不稳"
+    },
+    "lighting": {
+      "source": "混合光",
+      "brightness": "适中",
+      "backlight": false,
+      "note": "光线条件良好"
+    },
+    "background": {
+      "color": "白色",
+      "decorations": [
+        "无"
+      ],
+      "special": [
+        "无"
+      ],
+      "note": "墙面空白，可依命主喜用神补益"
+    },
+    "overall_score": 58,
+    "risk_factors": [
+      "右侧过高",
+      "假花失气",
+      "空调直吹",
+      "墙面空缺"
+    ],
+    "advantages": [
+      "背有实墙",
+      "光线适中"
+    ]
+  },
+  "design_result": {
+    "overview": {
+      "before": "右侧文卷堆积，假花失气，空调直吹",
+      "after": "扶助木气，左右平衡",
+      "score": 8.5
+    },
+    "immediate_actions": [
+      "将右侧文卷移至左侧青龙位，使左高右低",
+      "撤去塑料假花，清理桌面，留出明堂",
+      "调整空调出风方向，避开头顶"
+    ],
+    "this_week": [
+      {
+        "name": "真绿植（小盆栽）",
+        "location": "桌面左前方青龙位",
+        "purpose": "扶助木气",
+        "price": "15-25元"
+      },
+      {
+        "name": "桌面收纳盒",
+        "location": "替换零散文件",
+        "purpose": "整洁纳气",
+        "price": "20-30元"
+      },
+      {
+        "name": "小摆件（取金气）",
+        "location": "桌面右后方",
+        "purpose": "补益喜用神",
+        "price": "15-30元"
+      }
+    ],
+    "long_term": [
+      "每周五清理桌面，保持明堂开阔",
+      "绿植定期养护，枯萎即换",
+      "每季度依流年调整布局"
+    ],
+    "ai_prompt": "A modern minimalist office desk with green pothos plant, organized documents, soft natural lighting from left, feng shui optimized layout, photorealistic, 8k --ar 16:9",
+    "layout": "\n    [窗户 - 自然光源]\n┌─────────────────────────┐\n│ [绿植]  [显示器] [收纳盒] │\n│         [键盘]            │\n│  [水杯]   [鼠标] [便签]   │\n└─────────────────────────┘\n       [背对实墙 ✓]\n            "
+  },
+  "final_report": {
+    "overall": {
+      "status": "通过",
+      "score": 86
+    },
+    "final": {
+      "summary": "工位综合评分58分，主因右侧过高、假花失气、空调直吹。结合命主八字（喜用神金），改造后预期可提升至85分以上。",
+      "top3": [
+        "立即做：清右侧文卷、撤假花、调空调",
+        "本周做：置真绿植于青龙位，补金气摆件",
+        "长期养：每周整理，依流年微调"
+      ]
+    }
+  },
+  "bazi_info": {
+    "name": "命主",
+    "birthdate": "",
+    "birthtime": "",
+    "birthtime_label": "",
+    "gender": "male",
+    "bazi": [
+      "甲子",
+      "丙寅",
+      "戊辰",
+      "壬戌"
+    ],
+    "day_master": "戊",
+    "wuxing": {
+      "jin": 1,
+      "mu": 2,
+      "shui": 1,
+      "huo": 1,
+      "tu": 3
+    },
+    "favorable": "金",
+    "synthesis": "命主日主戊土，生于春季，木气旺盛而土受克。喜金以制木，土为比助亦佳。工位宜方正稳重，色调以黄白为上，忌东向背光。"
+  },
+  "disclaimer": "本判基于环境心理学与术数传统模型推演，仅供娱乐参考，请理性看待。"
+}

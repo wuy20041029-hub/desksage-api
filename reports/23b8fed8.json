@@ -1,0 +1,137 @@
+{
+  "task_id": "23b8fed8",
+  "scan_result": {
+    "photo_quality": "清晰",
+    "seat_analysis": {
+      "facing": "面朝窗户",
+      "back_to": "背对实墙",
+      "has_support": true,
+      "has_rush": false,
+      "note": "座位布局良好，背有靠山"
+    },
+    "desktop_analysis": {
+      "items": [
+        "笔记本电脑",
+        "文件堆（右侧）",
+        "塑料假花",
+        "空水杯"
+      ],
+      "left_right": "右侧高于左侧",
+      "clutter_score": 7,
+      "note": "右侧文件堆积过高"
+    },
+    "plant_decoration": {
+      "has_plant": true,
+      "plant_type": "塑料假花",
+      "plant_status": "不适用",
+      "sharp_objects": [
+        "无"
+      ],
+      "water_feature": false,
+      "note": "假花缺乏生机"
+    },
+    "overhead": {
+      "beam": false,
+      "light_type": "长条形LED灯",
+      "light_direct": false,
+      "air_con": true,
+      "air_con_direct": true,
+      "note": "空调直吹头部"
+    },
+    "lighting": {
+      "source": "混合光",
+      "brightness": "适中",
+      "backlight": false,
+      "note": "光线条件良好"
+    },
+    "background": {
+      "color": "白色",
+      "decorations": [
+        "无"
+      ],
+      "special": [
+        "无"
+      ],
+      "note": "墙面过于空白"
+    },
+    "overall_score": 55,
+    "risk_factors": [
+      "右侧过高",
+      "假花",
+      "空调直吹",
+      "墙面空白"
+    ],
+    "advantages": [
+      "背有实墙",
+      "光线适中"
+    ]
+  },
+  "design_result": {
+    "overview": {
+      "before": "右侧文件堆积，塑料假花，空调直吹",
+      "after": "左右平衡，真绿植，空调风向调整",
+      "score": 8.5
+    },
+    "immediate_actions": [
+      "把右侧文件架移到左侧",
+      "扔掉塑料假花",
+      "调整空调风向"
+    ],
+    "this_week": [
+      {
+        "name": "小绿萝盆栽",
+        "location": "桌面左前方",
+        "purpose": "增加生机",
+        "price": "15-25元"
+      },
+      {
+        "name": "桌面收纳盒",
+        "location": "统一文件堆",
+        "purpose": "整洁美观",
+        "price": "20-30元"
+      }
+    ],
+    "long_term": [
+      "每周五清理桌面",
+      "绿植定期浇水",
+      "季度微调布局"
+    ],
+    "ai_prompt": "A modern minimalist office desk with green pothos plant, organized documents in matching storage boxes, soft natural lighting, clean workspace, photorealistic, 8k --ar 16:9",
+    "layout": "\n    [窗户 - 自然光源]\n┌─────────────────────────┐\n│ [绿萝]  [显示器] [收纳盒] │\n│         [键盘]            │\n│  [水杯]   [鼠标] [便签]   │\n└─────────────────────────┘\n       [背对实墙 ✅]\n            ",
+    "shopping_list": [
+      {
+        "name": "绿萝盆栽",
+        "required": true,
+        "price": "15-25元",
+        "channel": "淘宝/拼多多/花店"
+      },
+      {
+        "name": "桌面收纳盒",
+        "required": true,
+        "price": "20-30元",
+        "channel": "淘宝/无印良品"
+      },
+      {
+        "name": "小幅装饰画",
+        "required": false,
+        "price": "10-20元",
+        "channel": "淘宝/宜家"
+      }
+    ]
+  },
+  "final_report": {
+    "overall": {
+      "status": "通过",
+      "score": 85
+    },
+    "final": {
+      "summary": "工位综合评分55分，主要问题：右侧文件过高、塑料假花、空调直吹。改造后预期提升至85分。",
+      "top3": [
+        "立即做：清理右侧文件，扔假花",
+        "本周做：买一盆小绿萝",
+        "长期：养成每周清理桌面习惯"
+      ]
+    }
+  },
+  "disclaimer": "本报告基于环境心理学和传统空间美学，仅供娱乐参考。"
+}
