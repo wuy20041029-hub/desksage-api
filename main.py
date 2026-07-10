@@ -37,7 +37,20 @@ def _load_keys_from_env() -> list:
             pass
     return DEFAULT_KEYS
 
-IN_MEMORY_KEYS = {"keys": _load_keys_from_env()}
+# 内存中的动态密钥（后台创建的）
+IN_MEMORY_KEYS = {"keys": list(_load_keys_from_env())}
+
+def _get_all_keys() -> list:
+    """合并环境变量密钥和内存密钥，去重"""
+    env_keys = _load_keys_from_env()
+    mem_keys = IN_MEMORY_KEYS.get("keys", [])
+    seen = set()
+    merged = []
+    for k in env_keys + mem_keys:
+        if k["key"] not in seen:
+            seen.add(k["key"])
+            merged.append(k)
+    return merged
 IN_MEMORY_REPORTS: dict = {}
 
 VERCEL_API_TOKEN = os.environ.get("VERCEL_API_TOKEN", "")
@@ -125,8 +138,9 @@ class KeyCreate(BaseModel):
 
 # ============ 密钥管理 ============
 def load_keys() -> dict:
-    # 每次都从环境变量重新加载，确保多实例一致
-    IN_MEMORY_KEYS["keys"] = _load_keys_from_env()
+    # 返回合并后的密钥列表
+    all_keys = _get_all_keys()
+    IN_MEMORY_KEYS["keys"] = all_keys
     return IN_MEMORY_KEYS
 
 def save_keys(data: dict):
