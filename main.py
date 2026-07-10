@@ -67,7 +67,7 @@ async def _update_vercel_env(keys_json: str):
                 await client.patch(
                     f"https://api.vercel.com/v9/projects/{VERCEL_PROJECT_ID}/env/{key_env['id']}",
                     headers=headers,
-                    json={"value": keys_json, "type": "plain", "target": ["production"]}
+                    json={"value": keys_json, "target": ["production"]}
                 )
             else:
                 await client.post(
