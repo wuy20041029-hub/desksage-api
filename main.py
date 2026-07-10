@@ -80,15 +80,33 @@ async def _update_vercel_env(keys_json: str):
                         "target": ["production"]
                     }
                 )
-            # 触发重新部署
+            # 通过 GitHub API 推送空 commit 触发 Vercel 重新部署
             try:
-                await client.post(
-                    f"https://api.vercel.com/v13/deployments",
-                    headers=headers,
-                    json={"name": "desksage-api"}
-                )
-            except:
-                pass
+                github_token = os.environ.get("GITHUB_TOKEN", "")
+                if github_token:
+                    gh_headers = {"Authorization": f"token {github_token}", "Accept": "application/vnd.github.v3+json"}
+                    # 获取 main 分支最新 SHA
+                    ref_resp = await client.get(
+                        "https://api.github.com/repos/wuy20041029-hub/desksage-api/git/ref/heads/main",
+                        headers=gh_headers
+                    )
+                    sha = ref_resp.json()["object"]["sha"]
+                    # 创建空 commit
+                    commit_resp = await client.post(
+                        "https://api.github.com/repos/wuy20041029-hub/desksage-api/git/commits",
+                        headers=gh_headers,
+                        json={"message": "sync: update keys from admin", "tree": sha, "parents": [sha]}
+                    )
+                    commit_sha = commit_resp.json().get("sha", "")
+                    if commit_sha:
+                        # 更新 ref
+                        await client.patch(
+                            "https://api.github.com/repos/wuy20041029-hub/desksage-api/git/ref/heads/main",
+                            headers=gh_headers,
+                            json={"sha": commit_sha}
+                        )
+            except Exception as e:
+                print(f"GitHub deploy trigger error: {e}")
             return True
     except Exception as e:
         print(f"Vercel API error: {e}")
