@@ -1,6 +1,7 @@
 """
 Vercel Serverless Function 入口
-添加路径前缀适配，解决 Vercel 自动去掉 /api 前缀的问题
+Vercel 会把 /api/xxx 的请求转发到这里，但 path 会变成去掉 /api 后的路径
+所以需要中间件把 /api 加回去
 """
 from main import app as original_app
 
@@ -10,11 +11,17 @@ class PathPrefixMiddleware:
         self.app = app
     
     async def __call__(self, scope, receive, send):
-        if scope["type"] == "http" and not scope["path"].startswith("/api"):
-            scope["path"] = "/api" + scope["path"]
-            # 同时修正 raw_path
-            if "raw_path" in scope:
-                scope["raw_path"] = b"/api" + scope["raw_path"]
+        if scope["type"] == "http":
+            path = scope.get("path", "")
+            # Vercel 可能把 /api/health 变成 /health，需要加回去
+            if not path.startswith("/api"):
+                scope["path"] = "/api" + path
+                if "raw_path" in scope:
+                    raw = scope["raw_path"]
+                    if isinstance(raw, bytes):
+                        scope["raw_path"] = b"/api" + raw
+                    else:
+                        scope["raw_path"] = "/api" + raw
         await self.app(scope, receive, send)
 
 app = PathPrefixMiddleware(original_app)
