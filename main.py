@@ -531,7 +531,7 @@ async def get_report(task_id: str, x_key: str = Header(...)):
 
 @app.get("/report-free/{task_id}")
 async def get_report_free(task_id: str, x_key: str = Header(...)):
-    """免费版报告接口：始终返回完整数据""
+    """免费版报告接口：始终返回完整数据"""
     result = verify_key(x_key.upper())
     if not result["valid"]: raise HTTPException(status_code=403, detail=result["reason"])
     if task_id not in IN_MEMORY_REPORTS: raise HTTPException(status_code=404, detail="报告不存在")
