@@ -20,13 +20,23 @@ from pydantic import BaseModel
 BASE_DIR = Path(__file__).parent
 ADMIN_TOKEN = "admin-secret-token-2024"
 
-# ============ 内存存储（Vercel 兼容，无需文件系统）============
-IN_MEMORY_KEYS = {
-    "keys": [
-        {"key": "TEST-AAAA-BBBB-CCCC", "created_at": "2026-01-01T00:00:00", "expires_at": "2028-12-31T23:59:59", "used_count": 0, "note": "测试密钥", "active": True},
-        {"key": "TEST-DDDD-EEEE-FFFF", "created_at": "2026-01-01T00:00:00", "expires_at": "2028-12-31T23:59:59", "used_count": 0, "note": "测试密钥", "active": True},
-    ]
-}
+# ============ 密钥存储（从环境变量加载，Vercel 多实例共享）============
+DEFAULT_KEYS = [
+    {"key": "TEST-AAAA-BBBB-CCCC", "created_at": "2026-01-01T00:00:00", "expires_at": "2028-12-31T23:59:59", "used_count": 0, "note": "测试密钥", "active": True},
+    {"key": "TEST-DDDD-EEEE-FFFF", "created_at": "2026-01-01T00:00:00", "expires_at": "2028-12-31T23:59:59", "used_count": 0, "note": "测试密钥", "active": True},
+]
+
+def _load_keys_from_env() -> list:
+    """从环境变量 KEYS_JSON 加载密钥列表"""
+    env_keys = os.environ.get("KEYS_JSON", "")
+    if env_keys:
+        try:
+            return json.loads(env_keys)
+        except (json.JSONDecodeError, TypeError):
+            pass
+    return DEFAULT_KEYS
+
+IN_MEMORY_KEYS = {"keys": _load_keys_from_env()}
 IN_MEMORY_REPORTS: dict = {}
 
 app = FastAPI(title="DeskSage API", version="2.0")
@@ -39,8 +49,10 @@ class KeyCreate(BaseModel):
     note: str = ""
 
 
-# ============ 密钥管理（内存存储）============
+# ============ 密钥管理 ============
 def load_keys() -> dict:
+    # 每次都从环境变量重新加载，确保多实例一致
+    IN_MEMORY_KEYS["keys"] = _load_keys_from_env()
     return IN_MEMORY_KEYS
 
 def save_keys(data: dict):
