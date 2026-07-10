@@ -440,7 +440,7 @@ async def run_pipeline(task_id: str, photo_path: str, key: str, bazi_info: dict,
 
 
 # ============ 客户端 API ============
-@app.post("/api/verify-key")
+@app.post("/verify-key")
 async def verify_key_endpoint(data: dict):
     key = data.get("key", "").strip().upper()
     if not key: raise HTTPException(status_code=400, detail="请输入密钥")
@@ -448,7 +448,7 @@ async def verify_key_endpoint(data: dict):
     if not result["valid"]: raise HTTPException(status_code=403, detail=result["reason"])
     return {"valid": True}
 
-@app.post("/api/upload")
+@app.post("/upload")
 async def upload_photo(
     file: UploadFile = File(...),
     x_key: str = Header(...),
@@ -474,12 +474,12 @@ async def upload_photo(
 
     return {"task_id": task_id}
 
-@app.get("/api/status/{task_id}")
+@app.get("/status/{task_id}")
 async def get_status(task_id: str):
     if task_id not in tasks: raise HTTPException(status_code=404, detail="任务不存在")
     return tasks[task_id]
 
-@app.get("/api/report/{task_id}")
+@app.get("/report/{task_id}")
 async def get_report(task_id: str, x_key: str = Header(...)):
     result = verify_key(x_key.upper())
     if not result["valid"]: raise HTTPException(status_code=403, detail=result["reason"])
@@ -529,7 +529,7 @@ async def get_report(task_id: str, x_key: str = Header(...)):
     return full_report
 
 
-@app.get("/api/report-free/{task_id}")
+@app.get("/report-free/{task_id}")
 async def get_report_free(task_id: str, x_key: str = Header(...)):
     """免费版报告接口：始终返回完整数据""
     result = verify_key(x_key.upper())
@@ -541,7 +541,7 @@ async def get_report_free(task_id: str, x_key: str = Header(...)):
     return report
 
 
-@app.post("/api/unlock/{task_id}")
+@app.post("/unlock/{task_id}")
 async def unlock_report(task_id: str, data: dict, x_key: str = Header(...)):
     """解锁付费内容"""
     result = verify_key(x_key.upper())
@@ -566,7 +566,7 @@ async def unlock_report(task_id: str, data: dict, x_key: str = Header(...)):
     return {"unlocked": True, "message": "解锁成功"}
 
 
-@app.post("/api/admin/unlock/{task_id}")
+@app.post("/admin/unlock/{task_id}")
 async def admin_unlock(task_id: str, authorization: str = Header(None)):
     """后台手动解锁（验证支付后用）"""
     check_admin(authorization)
@@ -584,7 +584,7 @@ def check_admin(authorization: str = Header(None)):
     if authorization.replace("Bearer ", "") != ADMIN_TOKEN:
         raise HTTPException(status_code=401, detail="无效token")
 
-@app.post("/api/admin/keys/create")
+@app.post("/admin/keys/create")
 async def admin_create_keys(data: KeyCreate, authorization: str = Header(None)):
     check_admin(authorization)
     data_file = load_keys()
@@ -602,12 +602,12 @@ async def admin_create_keys(data: KeyCreate, authorization: str = Header(None)):
     save_keys(data_file)
     return {"created": len(new_keys), "keys": new_keys}
 
-@app.get("/api/admin/keys/list")
+@app.get("/admin/keys/list")
 async def admin_list_keys(authorization: str = Header(None)):
     check_admin(authorization)
     return load_keys()
 
-@app.post("/api/admin/keys/toggle/{key}")
+@app.post("/admin/keys/toggle/{key}")
 async def admin_toggle_key(key: str, authorization: str = Header(None)):
     check_admin(authorization)
     data = load_keys()
@@ -618,7 +618,7 @@ async def admin_toggle_key(key: str, authorization: str = Header(None)):
             return {"key": key, "active": k["active"]}
     raise HTTPException(status_code=404, detail="密钥不存在")
 
-@app.delete("/api/admin/keys/{key}")
+@app.delete("/admin/keys/{key}")
 async def admin_delete_key(key: str, authorization: str = Header(None)):
     check_admin(authorization)
     data = load_keys()
@@ -626,7 +626,7 @@ async def admin_delete_key(key: str, authorization: str = Header(None)):
     save_keys(data)
     return {"deleted": key}
 
-@app.get("/api/admin/stats")
+@app.get("/admin/stats")
 async def admin_stats(authorization: str = Header(None)):
     check_admin(authorization)
     data = load_keys()
@@ -639,7 +639,7 @@ async def admin_stats(authorization: str = Header(None)):
         "total_usage": sum(k["used_count"] for k in keys)
     }
 
-@app.get("/api/health")
+@app.get("/health")
 async def health():
     return {"status": "ok"}
 
