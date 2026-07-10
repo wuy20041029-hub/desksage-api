@@ -15,6 +15,7 @@ from typing import Optional
 from fastapi import FastAPI, UploadFile, File, HTTPException, Header, Form
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+import httpx
 from pydantic import BaseModel
 
 BASE_DIR = Path(__file__).parent
@@ -39,6 +40,61 @@ def _load_keys_from_env() -> list:
 IN_MEMORY_KEYS = {"keys": _load_keys_from_env()}
 IN_MEMORY_REPORTS: dict = {}
 
+VERCEL_API_TOKEN = os.environ.get("VERCEL_API_TOKEN", "")
+VERCEL_PROJECT_ID = os.environ.get("VERCEL_PROJECT_ID", "")
+
+async def _update_vercel_env(keys_json: str):
+    """更新 Vercel 环境变量 KEYS_JSON"""
+    if not VERCEL_API_TOKEN or not VERCEL_PROJECT_ID:
+        print("WARNING: VERCEL_API_TOKEN or VERCEL_PROJECT_ID not set")
+        return False
+    try:
+        import httpx
+        headers = {"Authorization": f"Bearer {VERCEL_API_TOKEN}"}
+        async with httpx.AsyncClient(timeout=30) as client:
+            r = await client.get(
+                f"https://api.vercel.com/v9/projects/{VERCEL_PROJECT_ID}/env",
+                headers=headers
+            )
+            envs = r.json().get("envs", [])
+            key_env = None
+            for env in envs:
+                if env.get("key") == "KEYS_JSON":
+                    key_env = env
+                    break
+
+            if key_env:
+                await client.patch(
+                    f"https://api.vercel.com/v9/projects/{VERCEL_PROJECT_ID}/env/{key_env['id']}",
+                    headers=headers,
+                    json={"value": keys_json, "target": ["production"]}
+                )
+            else:
+                await client.post(
+                    f"https://api.vercel.com/v9/projects/{VERCEL_PROJECT_ID}/env",
+                    headers=headers,
+                    json={
+                        "key": "KEYS_JSON",
+                        "value": keys_json,
+                        "type": "plain",
+                        "target": ["production"]
+                    }
+                )
+            # 触发重新部署
+            try:
+                await client.post(
+                    f"https://api.vercel.com/v13/deployments",
+                    headers=headers,
+                    json={"name": "desksage-api"}
+                )
+            except:
+                pass
+            return True
+    except Exception as e:
+        print(f"Vercel API error: {e}")
+        return False
+
+
 app = FastAPI(title="DeskSage API", version="2.0")
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
 
@@ -58,6 +114,12 @@ def load_keys() -> dict:
 def save_keys(data: dict):
     IN_MEMORY_KEYS["keys"] = data["keys"]
 
+async def save_keys_remote(data: dict):
+    """保存密钥并同步到 Vercel 环境变量"""
+    IN_MEMORY_KEYS["keys"] = data["keys"]
+    keys_json = json.dumps(data["keys"], ensure_ascii=False)
+    await _update_vercel_env(keys_json)
+
 def generate_key() -> str:
     chars = string.ascii_uppercase + string.digits
     return "-".join(["".join(secrets.choice(chars) for _ in range(4)) for _ in range(4)])
@@ -72,7 +134,7 @@ def verify_key(key: str) -> dict:
             return {"valid": True, "info": k}
     return {"valid": False, "reason": "密钥不存在"}
 
-def use_key(key: str):
+async def use_key(key: str):
     data = load_keys()
     for k in data["keys"]:
         if k["key"] == key:
@@ -611,7 +673,7 @@ async def admin_create_keys(data: KeyCreate, authorization: str = Header(None)):
         }
         data_file["keys"].append(key_info)
         new_keys.append(key_info)
-    save_keys(data_file)
+    await save_keys_remote(data_file)
     return {"created": len(new_keys), "keys": new_keys}
 
 @app.get("/admin/keys/list")
@@ -626,7 +688,7 @@ async def admin_toggle_key(key: str, authorization: str = Header(None)):
     for k in data["keys"]:
         if k["key"] == key.upper():
             k["active"] = not k["active"]
-            save_keys(data)
+            await save_keys_remote(data)
             return {"key": key, "active": k["active"]}
     raise HTTPException(status_code=404, detail="密钥不存在")
 
@@ -635,7 +697,7 @@ async def admin_delete_key(key: str, authorization: str = Header(None)):
     check_admin(authorization)
     data = load_keys()
     data["keys"] = [k for k in data["keys"] if k["key"] != key.upper()]
-    save_keys(data)
+    await save_keys_remote(data)
     return {"deleted": key}
 
 @app.get("/admin/stats")
