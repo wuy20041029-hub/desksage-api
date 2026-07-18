@@ -9,6 +9,8 @@ import json
 import asyncio
 import secrets
 import string
+import random
+import hashlib
 from pathlib import Path
 from datetime import datetime, timedelta
 from typing import Optional
@@ -284,168 +286,562 @@ def generate_synthesis(day_master: str, wuxing: dict, favorable: str) -> str:
     )
 
 
-# ============ Agent 调用（模拟）============
-async def call_dev_engineer() -> dict:
-    await asyncio.sleep(2.5)
+# ============ 本地算法：工位扫描 / 合断方案 / 终审 ============
+# 零成本实现：基于图片特征 + 八字五行 + 随机种子生成确定性结果
+# 相同输入（同照片 + 同生日）=> 相同输出；不同输入 => 不同输出
+
+# ---- 风险因素 / 优势 模板池 ----
+_RISK_POOL = [
+    "背门而坐", "横梁压顶", "桌面杂乱", "背光作业", "右白虎过高",
+    "左青龙过低", "空调直吹", "假花失气", "明堂受阻", "光线不足",
+    "背后无靠", "尖锐物品外露", "色彩过暗", "水景不当", "管线凌乱",
+]
+_ADV_POOL = [
+    "采光充足", "背有实墙", "明堂开阔", "绿植生旺", "色彩和谐",
+    "左高右低", "光线柔和", "桌面整洁", "气场流通", "方位得宜",
+]
+
+# ---- 各分析项文案模板池 ----
+_SEAT_NOTES = [
+    "座位朝向尚可，背后略有依靠", "座位背门而设，气场受冲",
+    "座位面壁而坐，明堂逼仄", "座位临窗，采光虽佳然背空",
+    "座位居中，左右尚称", "座位侧对走道，气口动荡",
+]
+_SEAT_HARMS = [
+    "背门而坐，主犯小人，气运难聚。", "背空无靠，事业乏贵人扶持。",
+    "面壁而坐，前途受阻，心胸易郁。", "门冲之气直射后脑，易生头痛失眠。",
+    "侧对走道，气流紊乱，主心神不宁。",
+]
+_SEAT_BENEFITS = [
+    "背有实墙，主得贵人相助，事业稳固。", "明堂开阔，前途光明，思路畅达。",
+    "方位得宜，气场流通，身心安泰。", "左高右低，青龙得位，主升迁之象。",
+]
+
+_DESKTOP_NOTES = [
+    "桌面略显凌乱，杂物堆积", "桌面整洁有序，物品归位",
+    "桌面左右失衡，右侧偏高", "桌面物品适中，明堂尚可",
+    "桌面拥挤，空间局促", "桌面左高右低，方位得宜",
+]
+_DESKTOP_HARMS = [
+    "杂物堆积明堂，主思绪混乱，决策失误。", "右白虎过高，主阴盛阳衰，易招口舌。",
+    "桌面拥挤逼仄，气场壅滞，运势难舒。", "物品无序，主心神不宁，效率低下。",
+]
+_DESKTOP_BENEFITS = [
+    "桌面整洁，明堂开阔，主思路清晰。", "左高右低，青龙抬头，主事业顺遂。",
+    "物品归位，气场流通，主心境平和。", "空间适度，主进退有据，条理分明。",
+]
+
+_PLANT_NOTES = [
+    "未见绿植，生气不足", "绿植茂盛，生气盎然",
+    "绿植略显枯黄，需养护", "有塑料假花，失其生气",
+    "绿植摆放得当，点缀有方", "植物带刺，略有煞气",
+]
+_PLANT_HARMS = [
+    "假花失气，主虚花无果，徒增浮躁。", "植物枯萎，主衰败之象，宜速更换。",
+    "尖锐植物带煞，主口角是非。", "无绿植生气，气场沉滞，缺乏生机。",
+]
+_PLANT_BENEFITS = [
+    "绿植生旺，主化煞添生气，利文昌。", "植物茂盛，主生机勃勃，事业兴旺。",
+    "摆放得当，主聚气藏风，财气渐聚。",
+]
+
+_OVERHEAD_NOTES = [
+    "头顶未见横梁，环境尚可", "疑似横梁压顶，宜化解",
+    "灯具直射头顶，光线过强", "空调直吹头部，易生不适",
+    "头顶环境整洁，无压迫", "头顶管线外露，略有杂乱",
+]
+_OVERHEAD_HARMS = [
+    "横梁压顶，主压力重重，头疾易生。", "灯煞直射，主心神不宁，目疾易发。",
+    "空调直吹，主风邪入体，肩颈酸痛。",
+]
+_OVERHEAD_BENEFITS = [
+    "头顶开阔，主心胸舒畅，思维敏捷。", "无梁无煞，主安居无忧，气场平和。",
+    "光线柔和，主目明神清，效率提升。",
+]
+
+_LIGHTING_NOTES = [
+    "光线适中，明暗得宜", "光线偏暗，需补充光源",
+    "光线过强，略觉刺眼", "背光作业，目力受损",
+    "自然采光，光线柔和", "光源单一，明暗不均",
+]
+_LIGHTING_HARMS = [
+    "光线昏暗，主阳气不足，精神萎靡。", "背光作业，主目力受损，判断失误。",
+    "强光直射，主心浮气躁，难以专注。",
+]
+_LIGHTING_BENEFITS = [
+    "光线柔和充足，主阳气充沛，神清气爽。", "自然采光，主气场清明，思路畅达。",
+    "明暗得宜，主心境平和，效率提升。",
+]
+
+_BACKGROUND_NOTES = [
+    "背景墙面素净，无特殊装饰", "背景色彩偏暗，略显压抑",
+    "背景有装饰画，点缀得当", "背景杂乱，物品过多",
+    "背景色调温和，气场和谐", "背景有空镜，反光扰气",
+]
+_BACKGROUND_HARMS = [
+    "背景过暗，主阴气过重，运势低迷。", "杂物过多，主气场混乱，心绪不宁。",
+    "色彩冲克，主五行失衡，诸事不顺。",
+]
+_BACKGROUND_BENEFITS = [
+    "背景素净，主气场清明，心无杂念。", "装饰得当，主雅致生辉，文昌得利。",
+    "色调和谐，主五行相生，运势平稳。",
+]
+
+_PHOTO_QUALITY = ["清晰", "清晰", "模糊", "角度不佳", "清晰", "尚可"]
+
+# ---- 五行 -> 推荐物品映射（喜用神决定推荐物品）----
+PLANT_MAP = {
+    "木": [
+        ("绿萝", "桌面左侧青龙位", "补木生气，活化气场", "15-25元", "小型盆栽（高度15-25cm），带盆托"),
+        ("文竹", "桌面左前", "木气生发，利文昌", "10-20元", "小巧文竹一盆"),
+        ("富贵竹", "桌面右侧", "木水相生，旺财气", "8-15元", "水培3-5支"),
+    ],
+    "水": [
+        ("富贵竹", "桌面水培位", "水木相生，旺财运", "8-15元", "水培3-5支"),
+        ("小型鱼缸", "桌面左前", "活水聚财，生气流转", "30-60元", "直径15cm小型鱼缸"),
+        ("水培铜钱草", "桌面明堂位", "水气润局，招财纳福", "10-18元", "水培小杯"),
+    ],
+    "金": [
+        ("铜葫芦", "桌面抽屉内", "金气化煞，镇宅护身", "20-40元", "小铜葫芦一只"),
+        ("金属笔筒", "桌面右侧", "金气助运，理顺文书", "15-30元", "金属笔筒"),
+        ("白水晶", "桌面左前", "金气清明，提升决断", "20-35元", "白水晶簇小块"),
+    ],
+    "火": [
+        ("红掌", "桌面明堂位", "火气生旺，添喜庆", "15-30元", "红掌小盆"),
+        ("朱蕉", "桌面左侧", "火木相生，旺事业", "20-40元", "朱蕉小株"),
+        ("红色摆件", "桌面右后", "火气助运，提升人气", "10-25元", "红色小摆件"),
+    ],
+    "土": [
+        ("虎皮兰", "桌面左后", "土气稳固，镇宅聚财", "20-40元", "虎皮兰小盆"),
+        ("黄玉摆件", "桌面明堂", "土气生金，旺财运", "25-50元", "黄玉小摆件"),
+        ("陶瓷花器", "桌面右侧", "土气中和，平衡五行", "15-30元", "陶瓷小花瓶"),
+    ],
+}
+
+# ---- 即时行动 / 长期建议 模板池 ----
+_IMMEDIATE_TEMPLATES = [
+    "清理桌面杂物，保持明堂开阔", "调整座椅朝向，避免背门而坐",
+    "整理管线，理顺桌面气场", "移除尖锐物品，化解煞气",
+    "调整灯光角度，避免直射", "摆放绿植于青龙位，添生气",
+    "清理背后杂物，稳固靠山", "擦拭桌面，保持洁净明亮",
+]
+_LONG_TERM_TEMPLATES = [
+    "每周五下班前清理桌面，保持明堂开阔", "绿植每周浇水，枯叶即剪，勿使衰败",
+    "每月初一检视布局，依气场微调", "每季度更换绿植，保持生气常新",
+    "定期整理文件，勿使杂物堆积", "保持座椅靠墙，勿随意挪动",
+    "每半年清洁灯具，保持光线明亮", "依节气调整摆件方位，顺应天时",
+]
+
+# ---- 终审结语模板池 ----
+_CLOSINGS = [
+    "格局可改，气运可调。命由天定，运由己造。",
+    "风水之妙，在于调和。持之以恒，福泽自至。",
+    "一命二运三风水，调候得宜，自可转祸为福。",
+    "方位既正，气场自和。心正则气正，气正则运昌。",
+]
+
+
+def _pick(rng: random.Random, pool: list, n: int) -> list:
+    """从池中随机选 n 个不重复元素（不足则全取）"""
+    if n <= 0:
+        return []
+    if n >= len(pool):
+        return list(pool)
+    return rng.sample(pool, n)
+
+
+def _extract_image_features(photo_path: str) -> dict:
+    """提取图片特征用于生成种子与分析（PIL 不可用时退化为文件大小+文件名哈希）"""
+    features = {
+        "file_size": 0, "file_hash": "0", "brightness": 0.5,
+        "dominant_color": "neutral", "has_green": False, "has_warm": False,
+        "width": 0, "height": 0,
+    }
+    # 文件大小 + 哈希（始终可用）
+    try:
+        with open(photo_path, "rb") as f:
+            file_data = f.read()
+        features["file_size"] = len(file_data)
+        features["file_hash"] = hashlib.md5(file_data).hexdigest()
+    except Exception:
+        features["file_hash"] = hashlib.md5(photo_path.encode()).hexdigest()
+
+    # PIL 提取像素特征（可选，不可用则跳过）
+    try:
+        from PIL import Image
+        img = Image.open(photo_path)
+        img = img.convert("RGB")
+        features["width"], features["height"] = img.size
+        img.thumbnail((120, 120))
+        pixels = list(img.getdata())
+        if pixels:
+            total = len(pixels)
+            avg_r = sum(p[0] for p in pixels) / total
+            avg_g = sum(p[1] for p in pixels) / total
+            avg_b = sum(p[2] for p in pixels) / total
+            features["brightness"] = (avg_r + avg_g + avg_b) / 3 / 255.0
+            if avg_g > avg_r + 10 and avg_g > avg_b + 10:
+                features["dominant_color"] = "green"
+                features["has_green"] = True
+            elif avg_r > avg_g + 15 and avg_r > avg_b:
+                features["dominant_color"] = "red"
+                features["has_warm"] = True
+            elif avg_b > avg_r and avg_b > avg_g + 10:
+                features["dominant_color"] = "blue"
+            else:
+                features["dominant_color"] = "neutral"
+    except Exception as e:
+        print(f"PIL 不可用或图片读取失败，使用文件特征做种子: {e}")
+
+    return features
+
+
+async def call_dev_engineer(photo_path: str, bazi_info: dict = None) -> dict:
+    """工位扫描 - 本地算法生成（零成本，基于图片特征 + 八字 + 随机种子）"""
+    features = _extract_image_features(photo_path)
+
+    # 种子 = 图片特征 + 八字信息（不同生日=不同分数）
+    bazi_seed = ""
+    if bazi_info:
+        bazi_seed = f":{bazi_info.get('birthdate', '')}:{bazi_info.get('birthtime', '')}:{bazi_info.get('gender', '')}"
+    seed_str = (
+        f"{features['file_hash']}:{features['file_size']}:"
+        f"{features['brightness']:.4f}:{features['dominant_color']}:"
+        f"{features['width']}x{features['height']}{bazi_seed}"
+    )
+    seed = int(hashlib.md5(seed_str.encode()).hexdigest()[:8], 16)
+    rng = random.Random(seed)
+
+    await asyncio.sleep(0.2)
+
+    # 综合评分（35-85），受图片特征 + 八字五行影响
+    base = rng.randint(35, 85)
+    if features["brightness"] < 0.3:
+        base -= 6
+    elif features["brightness"] > 0.75:
+        base += 4
+    if features["has_green"]:
+        base += 5
+    if features["has_warm"]:
+        base += 2
+    # 八字五行直接影响分数（不同生日 = 不同分数）
+    if bazi_info:
+        wuxing = bazi_info.get("wuxing", {})
+        day_master = bazi_info.get("day_master", "")
+        # 根据日主五行和五行平衡度调整分数
+        wuxing_values = list(wuxing.values()) if wuxing else [1,1,1,1,1]
+        wuxing_range = max(wuxing_values) - min(wuxing_values) if wuxing_values else 0
+        # 五行越平衡分数越高
+        base += max(0, 8 - wuxing_range * 2)
+        # 日主五行与图片主色调的生克关系
+        dm_wuxing = {"甲":"mu","乙":"mu","丙":"huo","丁":"huo","戊":"tu","己":"tu","庚":"jin","辛":"jin","壬":"shui","癸":"shui"}.get(day_master, "")
+        if dm_wuxing == "mu" and features["has_green"]:
+            base += 5
+        elif dm_wuxing == "huo" and features["has_warm"]:
+            base += 5
+        elif dm_wuxing == "tu" and features["dominant_color"] == "neutral":
+            base += 3
+        elif dm_wuxing == "jin" and features["brightness"] > 0.6:
+            base += 4
+        elif dm_wuxing == "shui" and features["brightness"] < 0.4:
+            base += 4
+    overall_score = max(35, min(85, base))
+
+    # 座位分析
+    back_to = rng.choice(["背对实墙", "背对走廊", "背对窗户", "背对门", "背空"])
+    seat = {
+        "facing": rng.choice(["面朝窗户", "面朝墙壁", "面朝走廊", "面朝门", "面朝同事"]),
+        "back_to": back_to,
+        "has_support": "实墙" in back_to,
+        "has_rush": ("走廊" in back_to) or ("门" in back_to),
+        "note": rng.choice(_SEAT_NOTES),
+        "harm": rng.choice(_SEAT_HARMS),
+        "benefit": rng.choice(_SEAT_BENEFITS),
+    }
+
+    # 桌面分析
+    desktop = {
+        "items": rng.sample(
+            ["笔记本电脑", "显示器", "文件堆", "水杯", "手机", "键盘", "鼠标", "台历", "笔筒", "绿植"],
+            rng.randint(3, 6),
+        ),
+        "left_right": rng.choice(["右侧明显高于左侧", "左侧略高", "基本平衡", "左侧明显高于右侧"]),
+        "clutter_score": rng.randint(2, 9),
+        "note": rng.choice(_DESKTOP_NOTES),
+        "harm": rng.choice(_DESKTOP_HARMS),
+        "benefit": rng.choice(_DESKTOP_BENEFITS),
+    }
+
+    # 植物装饰
+    has_plant = features["has_green"] or rng.random() > 0.5
+    plant = {
+        "has_plant": has_plant,
+        "plant_type": rng.choice(["绿萝", "多肉", "文竹", "富贵竹", "塑料假花"]) if has_plant else "无",
+        "plant_status": rng.choice(["茂盛", "略黄", "枯萎", "良好"]) if has_plant else "无",
+        "sharp_objects": _pick(rng, ["剪刀", "美工刀", "仙人掌", "金属笔", "无"], rng.randint(0, 2)),
+        "water_feature": rng.random() > 0.85,
+        "note": rng.choice(_PLANT_NOTES),
+        "harm": rng.choice(_PLANT_HARMS),
+        "benefit": rng.choice(_PLANT_BENEFITS),
+    }
+    if not plant["sharp_objects"]:
+        plant["sharp_objects"] = ["无"]
+
+    # 头顶环境
+    overhead = {
+        "beam": rng.random() > 0.7,
+        "light_type": rng.choice(["长条形LED灯", "吊灯", "吸顶灯", "台灯", "无"]),
+        "light_direct": rng.random() > 0.6,
+        "air_con": rng.random() > 0.4,
+        "air_con_direct": rng.random() > 0.7,
+        "note": rng.choice(_OVERHEAD_NOTES),
+        "harm": rng.choice(_OVERHEAD_HARMS),
+        "benefit": rng.choice(_OVERHEAD_BENEFITS),
+    }
+
+    # 光线（亮度受图片特征影响）
+    if features["brightness"] < 0.3:
+        brightness_label = rng.choice(["偏暗", "昏暗"])
+    elif features["brightness"] > 0.75:
+        brightness_label = rng.choice(["过亮", "柔和"])
+    else:
+        brightness_label = rng.choice(["偏暗", "适中", "过亮", "柔和"])
+    lighting = {
+        "source": rng.choice(["自然光", "混合光", "日光灯", "LED灯", "台灯"]),
+        "brightness": brightness_label,
+        "backlight": rng.random() > 0.7,
+        "note": rng.choice(_LIGHTING_NOTES),
+        "harm": rng.choice(_LIGHTING_HARMS),
+        "benefit": rng.choice(_LIGHTING_BENEFITS),
+    }
+
+    # 背景
+    background = {
+        "color": rng.choice(["白色", "米色", "浅灰", "深蓝", "浅绿", "木色", "深色"]),
+        "decorations": _pick(rng, ["装饰画", "照片墙", "挂钟", "置物架", "无"], rng.randint(1, 3)),
+        "special": _pick(rng, ["镜子", "玻璃门", "窗户", "柱子", "无"], rng.randint(1, 2)),
+        "note": rng.choice(_BACKGROUND_NOTES),
+        "harm": rng.choice(_BACKGROUND_HARMS),
+        "benefit": rng.choice(_BACKGROUND_BENEFITS),
+    }
+    if not background["decorations"]:
+        background["decorations"] = ["无"]
+    if not background["special"]:
+        background["special"] = ["无"]
+
+    risk_factors = _pick(rng, _RISK_POOL, rng.randint(2, 4))
+    advantages = _pick(rng, _ADV_POOL, rng.randint(1, 3))
+
     return {
-        "photo_quality": "清晰",
-        "seat_analysis": {
-            "facing": "面朝窗户",
-            "back_to": "背对实墙",
-            "has_support": True,
-            "has_rush": False,
-            "note": "座位布局端正，背有实墙为靠山",
-            "harm": "若背向门坐，则来者不知，气场易被惊扰，且背后无靠，安全感不足，决策时易生疑虑。",
-            "benefit": "背有实墙如背后有靠山，工作时心神安定，得贵人扶持之力，处事果断。"
-        },
-        "desktop_analysis": {
-            "items": ["笔记本电脑", "文件堆（右侧）", "塑料假花", "空水杯", "手机充电器"],
-            "left_right": "右侧明显高于左侧",
-            "clutter_score": 7,
-            "note": "右侧文件堆积过高，青龙位受压",
-            "harm": "右侧过高为'白虎压青龙'之象，主口舌纷争、决策受压。青龙主生机文昌，受压则思路受阻、贵人远离。",
-            "benefit": "若改作左侧略高、右侧略低，呈'龙高虎伏'之势，则主文昌利考、人际和顺、决策得助。"
-        },
-        "plant_decoration": {
-            "has_plant": True,
-            "plant_type": "塑料假花",
-            "plant_status": "不适用",
-            "sharp_objects": ["无"],
-            "water_feature": False,
-            "note": "假花缺乏生气",
-            "harm": "塑料假花五行属'火'，且无生机可生，长期相伴则气场渐燥，心绪浮而不宁，徒有其形而无其神。",
-            "benefit": "真绿植可活化气场、净化空气、调养眼目，更可催旺东方青龙木气，使人神清气爽、思虑清明。"
-        },
-        "overhead": {
-            "beam": False,
-            "light_type": "长条形LED灯",
-            "light_direct": False,
-            "air_con": True,
-            "air_con_direct": True,
-            "note": "空调直吹头部",
-            "harm": "空调冷风直吹头部为'冷风压顶'，主头痛颈僵、睡眠不安，长期则思考力减弱、贵人远离。",
-            "benefit": "若空调出风口调至侧方或加导风板，则头顶气场平和，脑力清明，与上司沟通顺畅。"
-        },
-        "lighting": {
-            "source": "混合光",
-            "brightness": "适中",
-            "backlight": False,
-            "note": "光线条件良好",
-            "harm": "若光线过暗则阴气凝聚，人易倦怠懒散；过亮则心神外散，难专注。",
-            "benefit": "明暗适度、自然光为上，气场清朗则思路敏捷、贵人明鉴。"
-        },
-        "background": {
-            "color": "白色",
-            "decorations": ["无"],
-            "special": ["无"],
-            "note": "墙面空白",
-            "harm": "墙为'靠山'，全白无饰则靠山无力，且独坐时背影空虚，难获后援。",
-            "benefit": "依命主喜用神择画挂之，背后有情，则坐而无忧，后援绵长。"
-        },
-        "overall_score": 55,
-        "risk_factors": ["右侧过高", "假花失气", "空调直吹", "墙面空缺"],
-        "advantages": ["背有实墙", "光线适中", "视野开阔"]
+        "photo_quality": rng.choice(_PHOTO_QUALITY),
+        "seat_analysis": seat,
+        "desktop_analysis": desktop,
+        "plant_decoration": plant,
+        "overhead": overhead,
+        "lighting": lighting,
+        "background": background,
+        "overall_score": overall_score,
+        "risk_factors": risk_factors,
+        "advantages": advantages,
     }
 
 
 async def call_visual_designer(scan: dict, bazi: dict) -> dict:
-    await asyncio.sleep(2.0)
+    """合断方案 - 本地算法生成（基于八字五行喜用神 + 工位扫描问题）"""
     favorable = bazi.get("favorable", "金")
-    fav_lower = favorable.lower() if favorable.lower() in WUXING_LABEL else "mu"
-    fav_label = WUXING_LABEL[fav_lower]
+    # 种子 = 八字 + 扫描结果（确定性：相同输入相同输出，不同输入不同输出）
+    seed_str = json.dumps(bazi, ensure_ascii=False, sort_keys=True) + "::" + \
+               json.dumps(scan, ensure_ascii=False, sort_keys=True)
+    seed = int(hashlib.md5(seed_str.encode()).hexdigest()[:8], 16)
+    rng = random.Random(seed)
 
-    # 根据喜用神推荐具体盆栽和摆件
-    plant_map = {
-        "mu": {"name": "小绿萝/文竹", "desc": "叶片舒展，青龙木气最旺", "price": "15-25元"},
-        "huo": {"name": "红掌/朱蕉", "desc": "色应南方火气，催旺事业热情", "price": "20-35元"},
-        "tu": {"name": "虎皮兰/仙人球（小型）", "desc": "敦厚稳重，培土固基", "price": "15-25元"},
-        "jin": {"name": "白色蝴蝶兰/银皇后", "desc": "金气清朗，利决断", "price": "25-40元"},
-        "shui": {"name": "富贵竹（6支）", "desc": "水气流通，财源广进", "price": "20-30元"}
-    }
-    ornament_map = {
-        "mu": {"name": "桃木如意小摆件", "desc": "助木气生发，利人际", "price": "30-50元"},
-        "huo": {"name": "红玛瑙文昌塔", "desc": "催旺事业热情与决策力", "price": "40-80元"},
-        "tu": {"name": "黄玉貔貅小摆件", "desc": "稳固气场，聚财守成", "price": "50-100元"},
-        "jin": {"name": "金属文昌塔/铜葫芦", "desc": "金气清肃，利文书与决策", "price": "30-60元"},
-        "shui": {"name": "黑曜石小鱼缸", "desc": "水气流通，财源活水", "price": "40-80元"}
-    }
+    await asyncio.sleep(0.2)
 
-    plant = plant_map.get(fav_lower, plant_map["mu"])
-    ornament = ornament_map.get(fav_lower, ornament_map["mu"])
+    scan_score = scan.get("overall_score", 50)
+    risk_factors = scan.get("risk_factors", [])
+
+    # 喜用神对应物品（this_week 3 个）
+    plant_list = PLANT_MAP.get(favorable, PLANT_MAP["金"])
+    this_week = []
+    for i in range(3):
+        item = plant_list[i % len(plant_list)]
+        this_week.append({
+            "name": item[0], "location": item[1], "purpose": item[2],
+            "price": item[3], "spec": item[4],
+        })
+
+    # this_month 2 个：从其他五行取互补物品
+    other_keys = [k for k in PLANT_MAP.keys() if k != favorable]
+    this_month = []
+    used = set()
+    while len(this_month) < 2 and other_keys:
+        k = rng.choice(other_keys)
+        if k not in used:
+            used.add(k)
+            item = rng.choice(PLANT_MAP[k])
+            this_month.append({
+                "name": item[0], "location": item[1], "purpose": item[2],
+                "price": item[3], "spec": item[4],
+            })
+
+    # 即时行动 / 长期建议
+    immediate_actions = _pick(rng, _IMMEDIATE_TEMPLATES, 3)
+    long_term = _pick(rng, _LONG_TERM_TEMPLATES, 4)
+
+    # overview
+    if risk_factors:
+        before = f"当前工位存在{'、'.join(risk_factors[:2])}等问题，气场有失"
+    else:
+        before = scan.get("seat_analysis", {}).get("note", "工位现状待改善")
+    after = f"依命主喜用神【{favorable}】调候，补益{favorable}气，可令气场趋于平衡"
+    design_score = round(min(9.5, max(6.0, scan_score / 10 + 1.5 + rng.uniform(-0.5, 0.5))), 1)
+
+    # harm / benefit 文案
+    risk_text = risk_factors[0] if risk_factors else "气场失衡"
+    harm_opts = ["运势低迷", "口舌是非", "头疾失眠", "决策失误", "贵人难逢", "思绪混乱"]
+    harm_word = rng.choice(harm_opts)
+    harm_summary = rng.choice([
+        f"工位现状{risk_text}，气场壅滞。若不调候，恐生{harm_word}之患，久则运势渐衰。",
+        f"命主喜{favorable}气，工位又逢{risk_text}，两相冲克。不改则{harm_word}，事业难进。",
+        f"明堂受困，{risk_text}未化，加以命局喜{favorable}而不得，长此以往{harm_word}。",
+    ])
+    benefit_summary = rng.choice([
+        f"依命主喜{favorable}之理，添置{favorable}气之物，可令气场流转，化煞生旺，事业渐入佳境。",
+        f"调候得宜，{favorable}气得补，明堂开朗，主贵人扶持，运势稳步上扬。",
+        f"格局既正，{favorable}气归位，煞气化解，主身心安泰，诸事顺遂。",
+        f"五行既调，{favorable}气充沛，气场清明，主文昌得利，决断分明。",
+    ])
+
+    # AI 配图提示词（英文）
+    style_map = {
+        "金": "metallic accents, white and gold tones",
+        "木": "lush green plants, wooden textures",
+        "水": "water features, blue and glass elements",
+        "火": "warm red accents, vibrant lighting",
+        "土": "earthy ceramics, yellow and beige tones",
+    }
+    style = style_map.get(favorable, "balanced natural elements")
+    ai_prompt = f"A modern minimalist Chinese style office desk with feng shui layout, {style}, natural light, photorealistic, 8k --ar 16:9"
+
+    # 布局简图
+    layout = rng.choice([
+        """    [窗户 - 自然光源]
+    +------------------------+
+    | [绿植]  [显示器]  [摆件] |
+    |          [键盘]           |
+    |  [水杯]   [鼠标] [香薰]   |
+    |         <- 明堂 ->         |
+    +------------------------+
+            [背有实墙]
+    """,
+        """    [墙面 - 靠山]
+    +------------------------+
+    | [摆件]  [显示器]  [绿植] |
+    |   [文件]  [键盘]  [水杯]  |
+    |        <- 明堂 ->          |
+    +------------------------+
+        [走道 - 气场流通]
+    """,
+        """    [自然光 - 左侧入]
+    +------------------------+
+    | [绿植]  [显示器]        |
+    |          [键盘]  [摆件]  |
+    |  [水杯]   [鼠标]         |
+    |         <- 明堂 ->         |
+    +------------------------+
+            [背有实墙]
+    """,
+    ])
 
     return {
         "overview": {
-            "before": "右侧文卷堆积成山、塑料假花枯寂、空调冷风直贯头顶、墙面空寂无依",
-            "after": f"扶助{fav_label}气生发，左右平衡有度，明堂开阔纳气",
-            "score": 8.5,
-            "harm_summary": "当下工位主格局为'龙陷虎威'，主事业发展受压、思路受阻、人际疏离；若不改之，三月内易见工作调度不顺、上司责难之象。",
-            "benefit_summary": "调候之后，可成'龙腾虎伏'之局，主思路敏捷、贵人明鉴、事业渐入佳境，预计半年内可见事业转折之机。"
+            "before": before,
+            "after": after,
+            "score": design_score,
+            "harm_summary": harm_summary,
+            "benefit_summary": benefit_summary,
         },
-        "immediate_actions": [
-            "将右侧文卷移至左侧青龙位之下，使左高右低、龙高虎伏",
-            "撤去塑料假花，清理桌面，留出'明堂'区域（显示器正前方）",
-            "调整空调出风方向，避开头顶，使其斜吹墙面"
-        ],
-        "this_week": [
-            {
-                "name": plant["name"],
-                "location": "桌面左前方青龙位",
-                "purpose": plant["desc"],
-                "price": plant["price"],
-                "spec": "小型盆栽（高度15-25cm），带盆托"
-            },
-            {
-                "name": "桌面收纳盒（实木或藤编三件套）",
-                "location": "替换零散文件",
-                "purpose": "整理纳气，使明堂开阔有度",
-                "price": "30-50元",
-                "spec": "建议原木色或浅黄色"
-            },
-            {
-                "name": ornament["name"],
-                "location": "桌面右后方白虎位",
-                "purpose": ornament["desc"],
-                "price": ornament["price"],
-                "spec": "高度8-12cm小巧精致款"
-            }
-        ],
-        "this_month": [
-            {"name": f"喜用神{fav_label}色系装饰画", "location": "背后墙面（坐向正对）", "purpose": "补益靠山，催旺命局", "price": "40-80元", "spec": "建议尺寸40×60cm，简约山水或抽象画"},
-            {"name": "桌面香薰（小容量）", "location": "桌面右侧", "purpose": "调和气场，安神定志", "price": "30-50元", "spec": "木质调或檀香为上，避开浓香型"}
-        ],
-        "long_term": [
-            "每周五下班前清理桌面，使明堂开阔有度",
-            "绿植每周浇水，枯叶即剪，半年更换一次",
-            "每月初一检视布局，依当月气场微调",
-            "每季度依流年流月调整主摆件位置"
-        ],
-        "ai_prompt": "A modern minimalist Chinese style office desk with green pothos plant on left, natural wood storage boxes, jade ornament on right, soft natural window light, feng shui optimized layout with balanced yin-yang energy, photorealistic, 8k, warm earth tones --ar 16:9",
-        "layout": """
-         [窗户 - 自然光源 ↑]
-    ┌──────────────────────────┐
-    │ [绿植]  [显示器]  [摆件] │
-    │          [键盘]           │
-    │  [水杯]   [鼠标] [香薰]   │
-    │         ← 明堂 →         │
-    └──────────────────────────┘
-            [背有实墙 ✓]
-    """
+        "immediate_actions": immediate_actions,
+        "this_week": this_week,
+        "this_month": this_month,
+        "long_term": long_term,
+        "ai_prompt": ai_prompt,
+        "layout": layout,
     }
 
 
 async def call_project_director(scan: dict, design: dict, bazi: dict) -> dict:
-    await asyncio.sleep(1.5)
+    """终审呈判 - 本地算法生成（基于扫描分数 + 八字喜用神）"""
+    favorable = bazi.get("favorable", "金")
+    day_master = bazi.get("day_master", "")
+    seed_str = json.dumps({"s": scan, "d": design, "b": bazi}, ensure_ascii=False, sort_keys=True)
+    seed = int(hashlib.md5(seed_str.encode()).hexdigest()[:8], 16)
+    rng = random.Random(seed)
+
+    await asyncio.sleep(0.2)
+
+    scan_score = scan.get("overall_score", 50)
+    risk_factors = scan.get("risk_factors", [])
+    advantages = scan.get("advantages", [])
+
+    # 改造后预期评分（60-95）
+    final_score = int(min(95, max(60, scan_score + 15 + rng.randint(0, 8))))
+    if final_score >= 85:
+        status = "优秀"
+    elif final_score >= 75:
+        status = "良好"
+    elif final_score >= 65:
+        status = "通过"
+    else:
+        status = "待改进"
+
+    # summary：按分数段选择文案（低分/中分/高分不同文案）
+    risk_text = "、".join(risk_factors[:2]) if risk_factors else "气场失衡"
+    adv_text = "、".join(advantages[:2]) if advantages else "方位得宜"
+    if scan_score < 50:
+        summary = rng.choice([
+            f"命主日主{day_master}，喜用神【{favorable}】。工位现状堪忧，{risk_text}，煞气未化。所幸方案对症下药，补{favorable}气以调候，假以时日可转危为安。",
+            f"观此工位，{risk_text}俱在，气场壅滞。然命主喜{favorable}，方案循五行之理布局，持之以恒，运势可望回升。",
+        ])
+    elif scan_score < 70:
+        summary = rng.choice([
+            f"命主日主{day_master}，喜【{favorable}】。工位虽有小疵，{risk_text}，然大体尚可。方案补{favorable}气、化微煞，格局渐入佳境。",
+            f"工位现状中等，{risk_text}。依命主喜{favorable}之理调候，扬长避短，运势可稳步上扬。",
+        ])
+    else:
+        summary = rng.choice([
+            f"命主日主{day_master}，喜【{favorable}】。工位格局甚佳，{adv_text}。方案锦上添花，补{favorable}气以固本，主事业兴旺。",
+            f"观此工位，明堂开阔，{adv_text}。命主喜{favorable}，方案循此布局，可保运势亨通，贵人常临。",
+        ])
+
+    # top3：结合风险因素与方案物品
+    this_week_items = design.get("this_week", [])
+    week_action = (
+        f"本周做：购{this_week_items[0].get('name', '绿植')}置于{this_week_items[0].get('location', '青龙位')}，补{favorable}气"
+        if this_week_items else f"本周做：添置{favorable}气之物于青龙位"
+    )
+    if risk_factors:
+        top3 = [
+            f"立即做：化解{risk_factors[0]}，调整座位或摆件方位",
+            week_action,
+            f"长期养：每周整理，每月检视，依{favorable}气调候勿使反复",
+        ]
+    else:
+        top3 = [
+            "立即做：清理桌面，保持明堂开阔",
+            week_action,
+            f"长期养：每周整理，每月检视，依{favorable}气调候勿使反复",
+        ]
+
+    closing = rng.choice(_CLOSINGS)
+
     return {
-        "overall": {"status": "通过", "score": 86},
+        "overall": {"status": status, "score": final_score},
         "final": {
-            "summary": f"工位综合评分55分，主因右侧过高、假花失气、空调直吹。结合命主八字（喜用神{bazi.get('favorable', '金')}），改造后预期可提升至85分以上。",
-            "top3": [
-                f"立即做：清右侧文卷、撤假花、调空调风向",
-                f"本周做：置真绿植于青龙位，补{bazi.get('favorable', '金')}气摆件",
-                f"长期养：每周整理，依流年微调"
-            ],
-            "closing": "格局可改，气运可调。命由天定，运由己造。工位虽小，乃事业之映射，望君珍重调候之机。"
-        }
+            "summary": summary,
+            "top3": top3,
+            "closing": closing,
+        },
     }
 
 
@@ -472,55 +868,35 @@ def update_step(task_id: str, step_name: str, status: str, progress: int, label:
                 step["status"] = status
 
 
-async def run_pipeline(task_id: str, photo_path: str, key: str, bazi_info: dict, retest_token: str = ""):
+async def run_pipeline(task_id: str, photo_path: str, key: str, bazi_info: dict):
     """完整流水线：八字 + 工位扫描 + 合断 + 终审（内存存储版本）"""
     tasks[task_id]["status"] = "running"
     try:
-        # 复测加成
-        retest_bonus = 0
         prev_report = None
-        if retest_token:
-            if retest_token in IN_MEMORY_REPORTS:
-                prev_report = IN_MEMORY_REPORTS[retest_token]
-            retest_bonus = 20
-            tasks[task_id]["is_retest"] = True
 
-        # Step 1: 八字
+        # Step 1: 八字（复测时跳过，直接用之前的）
         update_step(task_id, "bazi", "running", 15, "推演命主八字...")
-        await asyncio.sleep(1.8)
+        await asyncio.sleep(0.5)
         update_step(task_id, "bazi", "completed", 25, "八字已立")
         tasks[task_id]["bazi_info"] = bazi_info
 
         # Step 2: dev-engineer
         update_step(task_id, "dev-engineer", "running", 35, "扫描工位外境...")
-        scan = await call_dev_engineer()
+        scan = await call_dev_engineer(photo_path, bazi_info)
         update_step(task_id, "dev-engineer", "completed", 50, "扫描完成")
         tasks[task_id]["scan_result"] = scan
 
-        # 复测时分数提升
-        if retest_bonus > 0:
-            scan["overall_score"] = min(95, scan["overall_score"] + retest_bonus)
-            scan["risk_factors"] = [f for f in scan["risk_factors"] if f not in ["假花失气", "右侧过高"]]
-            scan["advantages"] = ["已采纳建议改造", "气场明显改善"] + scan.get("advantages", [])
+
 
         # Step 3: visual-designer
         update_step(task_id, "visual-designer", "running", 65, "八字工位合断中...")
         design = await call_visual_designer(scan, bazi_info)
-        if retest_bonus > 0:
-            design["overview"]["benefit_summary"] = "复测可见气场已显著改善，各要素趋于平衡。建议持续维护，并逐步落实'本月'与'长期'建议项。"
         update_step(task_id, "visual-designer", "completed", 80, "合断方案已定")
         tasks[task_id]["design_result"] = design
 
         # Step 4: project-director
         update_step(task_id, "project-director", "running", 90, "终审呈判...")
         director = await call_project_director(scan, design, bazi_info)
-        if retest_bonus > 0:
-            director["final"]["summary"] = f"复测见格局由{prev_report['scan_result']['overall_score']}分升至{scan['overall_score']}分，气场显著改善。望持续养护，勿令反复。"
-            director["final"]["top3"] = [
-                "持续每周整理，保持明堂开阔",
-                "每月初一检视绿植状态，及时更换",
-                "下半年可视事业进展追加新摆件"
-            ]
         update_step(task_id, "project-director", "completed", 100, "判毕")
         tasks[task_id]["final_report"] = director
 
@@ -534,9 +910,6 @@ async def run_pipeline(task_id: str, photo_path: str, key: str, bazi_info: dict,
             "design_result": design,
             "final_report": director,
             "bazi_info": bazi_info,
-            "is_retest": retest_bonus > 0,
-            "prev_score": prev_report["scan_result"]["overall_score"] if prev_report else None,
-            "current_score": scan["overall_score"],
             "unlocked": False,
             "disclaimer": "本判基于环境心理学与术数传统模型推演，仅供娱乐参考，请理性看待。"
         }
@@ -562,21 +935,29 @@ async def upload_photo(
     birthtime: str = Form(""),
     calendarType: str = Form("solar"),
     gender: str = Form("male"),
-    name: str = Form(""),
-    retest_token: str = Form("")
+    name: str = Form("")
 ):
     result = verify_key(x_key.upper())
     if not result["valid"]: raise HTTPException(status_code=403, detail=result["reason"])
     if not file.content_type.startswith("image/"): raise HTTPException(status_code=400, detail="只支持图片")
 
     task_id = str(uuid.uuid4())[:8]
-    file_path = f"{task_id}_{file.filename}"  # 内存存储，仅保留文件名
+    # Vercel 只允许写 /tmp
+    upload_dir = Path("/tmp/desksage_uploads")
+    upload_dir.mkdir(parents=True, exist_ok=True)
+    file_path = upload_dir / f"{task_id}_{file.filename}"
+    with open(file_path, "wb") as f:
+        f.write(await file.read())
 
     # 计算八字
-    bazi_info = calculate_bazi(birthdate, birthtime, gender, name)
+    if birthdate and birthtime:
+        bazi_info = calculate_bazi(birthdate, birthtime, gender, name)
+    else:
+        bazi_info = {"name": "", "birthdate": "", "birthtime": "", "gender": "", "bazi": [], "day_master": "", "wuxing_count": {}, "favorable": "", "synthesis": ""}
 
     init_task(task_id)
-    asyncio.create_task(run_pipeline(task_id, file_path, x_key.upper(), bazi_info, retest_token.upper()))
+    # 同步执行流水线（Vercel serverless 后台任务会被冻结）
+    await run_pipeline(task_id, str(file_path), x_key.upper(), bazi_info)
 
     return {"task_id": task_id}
 
@@ -598,9 +979,6 @@ async def get_report(task_id: str, x_key: str = Header(...)):
         # 返回免费版：隐藏详细危害/好处、推荐物品、本月/长期建议
         locked_report = {
             "task_id": full_report["task_id"],
-            "is_retest": full_report.get("is_retest", False),
-            "prev_score": full_report.get("prev_score"),
-            "current_score": full_report.get("current_score"),
             "bazi_info": full_report["bazi_info"],
             "scan_result": {
                 "overall_score": full_report["scan_result"]["overall_score"],
